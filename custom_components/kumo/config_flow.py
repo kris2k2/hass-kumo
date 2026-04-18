@@ -14,13 +14,20 @@ from homeassistant.helpers.json import save_json
 from pykumo import KumoCloudAccount
 from requests.exceptions import ConnectionError
 
-from .const import DHCP_DISCOVERED_KEY, DOMAIN, KUMO_CONFIG_CACHE
+from .const import (
+    DHCP_DISCOVERED_KEY,
+    DOMAIN,
+    KUMO_CONFIG_CACHE,
+    DEFAULT_POOL_CONNECTIONS,
+    DEFAULT_POOL_MAXSIZE,
+)
 
 DEFAULT_PREFER_CACHE = False
 _LOGGER = logging.getLogger(__name__)
 EDIT_KEY = "edit_selection"
 EDIT_TIMEOUT = "Timeouts"
 EDIT_UNITS = "Unit Settings"
+EDIT_POOL = "Connection Pool"
 
 
 class PlaceholderAccount:
@@ -271,13 +278,15 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 return await self.async_step_timeout_settings()
             if user_input[EDIT_KEY] == EDIT_UNITS:
                 return await self.async_step_unit_select()
+            if user_input[EDIT_KEY] == EDIT_POOL:
+                return await self.async_step_pool_settings()
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
                     vol.Required(EDIT_KEY, default=EDIT_TIMEOUT): vol.In(
-                        [EDIT_TIMEOUT, EDIT_UNITS]
+                        [EDIT_TIMEOUT, EDIT_UNITS, EDIT_POOL]
                     )
                 },
             ),
@@ -295,6 +304,29 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         )
 
         return self.async_show_form(step_id="timeout_settings", data_schema=data_schema)
+
+    async def async_step_pool_settings(self, user_input=None):
+        """Manage the connection pool settings."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        # Get current pool settings from options or use defaults
+        current_options = self._config_entry.options or {}
+
+        data_schema = vol.Schema(
+            {
+                vol.Required(
+                    "pool_connections",
+                    default=current_options.get("pool_connections", DEFAULT_POOL_CONNECTIONS)
+                ): vol.Coerce(int),
+                vol.Required(
+                    "pool_maxsize",
+                    default=current_options.get("pool_maxsize", DEFAULT_POOL_MAXSIZE)
+                ): vol.Coerce(int),
+            }
+        )
+
+        return self.async_show_form(step_id="pool_settings", data_schema=data_schema)
 
     async def async_step_unit_select(self, user_input=None):
         """Handle options flow."""

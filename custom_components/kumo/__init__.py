@@ -16,6 +16,10 @@ from .const import (
     CONF_CONNECT_TIMEOUT,
     CONF_PREFER_CACHE,
     CONF_RESPONSE_TIMEOUT,
+    CONF_POOL_CONNECTIONS,
+    CONF_POOL_MAXSIZE,
+    DEFAULT_POOL_CONNECTIONS,
+    DEFAULT_POOL_MAXSIZE,
     DHCP_DISCOVERED_KEY,
     DOMAIN,
     KUMO_CONFIG_CACHE,
@@ -23,8 +27,100 @@ from .const import (
     KUMO_DATA_COORDINATORS,
     PLATFORMS,
 )
+from .http_session import http_session, get_http_session, KumoHttpSession
 
 _LOGGER = logging.getLogger(__name__)
+
+# Global flag to ensure patch is applied only once
+_pykumo_patched = False
+
+
+def _patch_pykumo(pool_connections=None, pool_maxsize=None):
+    """Patch pykumo to use shared HTTP session for connection pooling."""
+    global _pykumo_patched
+    if _pykumo_patched:
+        return
+
+    try:
+        import pykumo.py_kumo_base as pkb
+        import pykumo.py_kumo_cloud_account as pkc
+        import pykumo.py_kumo_cloud_account_v3 as pkc3
+        import requests
+
+        # Store original request functions
+        _original_post = requests.post
+        _original_get = requests.get
+
+        def _pooled_post(url, **kwargs):
+            """Use shared session for POST requests."""
+            session = get_http_session().session
+            _LOGGER.info("POST %s via pooled session", url)
+            try:
+                return session.post(url, **kwargs)
+            except Exception as e:
+                _LOGGER.warning("POST request failed for %s: %s", url, e)
+                raise
+
+        def _pooled_get(url, **kwargs):
+            """Use shared session for GET requests."""
+            session = get_http_session().session
+            _LOGGER.info("GET %s via pooled session", url)
+            try:
+                return session.get(url, **kwargs)
+            except Exception as e:
+                _LOGGER.warning("GET request failed for %s: %s", url, e)
+                raise
+
+        # Patch PyKumoBase._request to use shared session
+        # Original signature: _request(self, post_data) - builds URL internally
+        _original_request = pkb.PyKumoBase._request
+
+        def _patched_request(self, post_data):
+            """Use shared session instead of creating new one per request."""
+            if not self._address:
+                _LOGGER.warning("Unit %s address not set", self._name)
+                return {}
+            url = "http://" + self._address + "/api"
+            token = self._token(post_data)
+            headers = {
+                "Accept": "application/json, text/plain, */*",
+                "Content-Type": "application/json",
+            }
+            token_param = {"m": token}  # Key is 'm', not 'token'!
+            
+            session = get_http_session().session
+            _LOGGER.info("PyKumoBase._request: PUT %s", url)
+            try:
+                response = session.put(
+                    url,
+                    headers=headers,
+                    data=post_data,
+                    params=token_param,
+                    timeout=self._timeouts,
+                )
+                return response.json()
+            except Exception as e:
+                _LOGGER.warning("Request to %s failed: %s", url, e)
+                return {}
+
+        pkb.PyKumoBase._request = _patched_request
+
+        # Patch KumoCloudV3 - replace global requests.post/get with pooled versions
+        # KumoCloudV3 uses direct requests.post() and requests.get() calls
+        if hasattr(pkc3, 'KumoCloudV3'):
+            # Patch the module-level requests functions that KumoCloudV3 uses
+            pkc3.requests.post = _pooled_post
+            pkc3.requests.get = _pooled_get
+            _LOGGER.info("Patched pykumo.py_kumo_cloud_account_v3 requests functions")
+
+        _pykumo_patched = True
+        _LOGGER.info("Patched pykumo to use shared HTTP session with connection pooling")
+    except Exception as e:
+        _LOGGER.warning("Failed to patch pykumo for connection pooling: %s", e)
+
+
+# Apply patch after import
+_patch_pykumo()
 
 
 CONFIG_SCHEMA = vol.Schema(
@@ -99,6 +195,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
             entry.options.get(CONF_RESPONSE_TIMEOUT, "8")
         )
         timeouts = (connect_timeout, response_timeout)
+
+        # Initialize HTTP session with connection pooling BEFORE making pykumo devices
+        # Session must be configured before any HTTP calls
+        pool_connections = int(
+            entry.options.get(CONF_POOL_CONNECTIONS, DEFAULT_POOL_CONNECTIONS)
+        )
+        pool_maxsize = int(
+            entry.options.get(CONF_POOL_MAXSIZE, DEFAULT_POOL_MAXSIZE)
+        )
+        
+        # Reconfigure the HTTP session with new pool settings
+        # This recreates the session with the correct pool configuration
+        http_session.configure(pool_connections=pool_connections, pool_maxsize=pool_maxsize)
+        _LOGGER.info(
+            "HTTP session pool configured: pool_connections=%d, pool_maxsize=%d",
+            pool_connections,
+            pool_maxsize,
+        )
+
         pykumos = await hass.async_add_executor_job(account.make_pykumos, timeouts, True)
         for device in pykumos.values():
             if device.get_serial() not in coordinators:
@@ -171,4 +286,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
         unload_ok = await hass.config_entries.async_forward_entry_unload(entry, platform)
         if not unload_ok:
             all_ok = False
+
+    # Close HTTP session to release connections
+    http_session.close()
+    _LOGGER.debug("Closed HTTP session on unload")
+
     return all_ok

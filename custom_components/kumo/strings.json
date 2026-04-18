@@ -38,6 +38,14 @@
           "response_timeout": "Response Timeout"
         }
       },
+      "pool_settings": {
+        "title": "Connection Pool Settings",
+        "description": "Configure HTTP connection pooling for Kumo devices. Increase pool size if you have many devices and experience connection issues.",
+        "data": {
+          "pool_connections": "Pool Connections (hosts)",
+          "pool_maxsize": "Pool Max Size (total connections)"
+        }
+      },
       "unit_select": {
         "title": "You can set the local IP of your unit in the cache file here",
         "description": "You must reload the integration after setting IP addresses",
