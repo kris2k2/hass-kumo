@@ -41,6 +41,17 @@
           "post_command_refresh_delay": "Post-Command Refresh Delay (seconds)"
         }
       },
+      "debug_settings": {
+        "title": "Debug Logging",
+        "description": "Record every request and response exchanged with your indoor units, the Kumo Cloud API and the Kumo Cloud websocket to `{log_path}` (one JSON object per line; rotates at 10 MB, keeping 5 old files). Use it to explore the API, then turn it off. Cloud and websocket traffic only happens while the integration starts up, and is skipped when 'Prefer Local Cache' was chosen during setup and the cache is usable.",
+        "data": {
+          "debug_traffic_log": "Log API and websocket traffic to a file",
+          "debug_redact_secrets": "Mask passwords, tokens and account details"
+        },
+        "data_description": {
+          "debug_redact_secrets": "Turning this off writes your adapter passwords and cloud tokens to the file in plain text. Never share an unmasked log."
+        }
+      },
       "unit_select": {
         "title": "You can set the local IP of your unit in the cache file here",
         "description": "You must reload the integration after setting IP addresses",

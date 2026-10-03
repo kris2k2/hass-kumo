@@ -17,6 +17,12 @@ CONF_SCAN_INTERVAL = "scan_interval"
 DEFAULT_SCAN_INTERVAL = 60  # seconds
 CONF_POST_COMMAND_REFRESH_DELAY = "post_command_refresh_delay"
 DEFAULT_POST_COMMAND_REFRESH_DELAY = 2.0  # seconds
+CONF_DEBUG_TRAFFIC_LOG = "debug_traffic_log"
+CONF_DEBUG_REDACT_SECRETS = "debug_redact_secrets"
+DEBUG_LOG_DIR = "kumo_debug"
+DEBUG_LOG_FILE = "kumo_traffic.jsonl"
+DEBUG_LOG_MAX_BYTES = 10 * 1024 * 1024
+DEBUG_LOG_BACKUP_COUNT = 5
 MAX_AVAILABILITY_TRIES = 3  # How many times we will attempt to update from a kumo before marking it unavailable
 
 DHCP_DISCOVERED_KEY = f"{DOMAIN}_dhcp_discovered"

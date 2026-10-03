@@ -86,6 +86,15 @@ In early 2023 Mitsubishi appears to have made some change that makes the WiFi ad
 
 As a result of this issue, if you are seeing `serializer_error` or (especially) `__no_memory` errors consistently in your HA logs, it's likely that your indoor unit needs power-cycling. Unfortunately the easiest way is probably at the circuit breaker for the entire mini-split system.
 
+### Debug logging of API traffic
+To see exactly what the integration exchanges with your units and with Kumo Cloud (useful for discovering attributes the integration doesn't use yet), go to Settings -> Devices and Services -> Kumo -> Configure, pick **Debug Logging**, and turn on **Log API and websocket traffic to a file**. The integration reloads and writes every request and response to `kumo_debug/kumo_traffic.jsonl` in your Home Assistant config directory, one JSON object per line:
+
+- `channel` is `local` (an indoor unit's adapter), `cloud` (the Kumo Cloud REST API) or `socketio` (the Kumo Cloud websocket); `direction` is `send`, `recv` or `error`.
+- Websocket frames are decoded into `packets` showing each event name and its arguments.
+- The file rotates at 10 MB and keeps 5 old files.
+
+Passwords, cryptoSerials, cloud tokens and account details are masked unless you turn off **Mask passwords, tokens and account details**; never share an unmasked log. Cloud and websocket traffic only happens while the integration starts up, and is skipped if you chose **Prefer Local Cache** during setup and the cache is usable. Turn the option off when you're done, since local polling traffic keeps being written. This needs a pykumo release that includes traffic capture; with an older pykumo only start/stop markers are written.
+
 ## Home Assistant Entities and Control
 
 Each indoor unit appears as a separate [`climate`](https://www.home-assistant.io/integrations/climate/) entity in Home Assistant. Entity names are derived from the name you created for the unit in KumoCloud. For example, `climate.bedroom` or `climate.living_room`.

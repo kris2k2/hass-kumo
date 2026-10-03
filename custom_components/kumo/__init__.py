@@ -15,6 +15,7 @@ from homeassistant.util.json import load_json
 from homeassistant.helpers.json import save_json
 
 from .coordinator import KumoDataUpdateCoordinator
+from .debug_log import async_start_traffic_capture
 from .const import (
     CONF_CONNECT_TIMEOUT,
     CONF_PREFER_CACHE,
@@ -82,6 +83,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     username = entry.data.get(CONF_USERNAME)
     password = entry.data.get(CONF_PASSWORD)
     prefer_cache = entry.data.get(CONF_PREFER_CACHE)
+
+    # Start before contacting the cloud so setup traffic is captured too.
+    await async_start_traffic_capture(hass, entry)
 
     # Load cached config if available
     cached_dict = await hass.async_add_executor_job(
