@@ -18,6 +18,8 @@ from requests.exceptions import ConnectionError
 
 from .const import (
     CONF_CONNECT_TIMEOUT,
+    CONF_DEBUG_REDACT_SECRETS,
+    CONF_DEBUG_TRAFFIC_LOG,
     CONF_POST_COMMAND_REFRESH_DELAY,
     CONF_RESPONSE_TIMEOUT,
     CONF_SCAN_INTERVAL,
@@ -27,12 +29,14 @@ from .const import (
     DOMAIN,
     KUMO_CONFIG_CACHE,
 )
+from .debug_log import debug_log_path
 
 DEFAULT_PREFER_CACHE = False
 _LOGGER = logging.getLogger(__name__)
 EDIT_KEY = "edit_selection"
 EDIT_TIMEOUT = "Timeouts"
 EDIT_UNITS = "Unit Settings"
+EDIT_DEBUG = "Debug Logging"
 
 
 class PlaceholderAccount:
@@ -287,21 +291,32 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 return await self.async_step_timeout_settings()
             if user_input[EDIT_KEY] == EDIT_UNITS:
                 return await self.async_step_unit_select()
+            if user_input[EDIT_KEY] == EDIT_DEBUG:
+                return await self.async_step_debug_settings()
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
                     vol.Required(EDIT_KEY, default=EDIT_TIMEOUT): vol.In(
-                        [EDIT_TIMEOUT, EDIT_UNITS]
+                        [EDIT_TIMEOUT, EDIT_UNITS, EDIT_DEBUG]
                     )
                 },
             ),
         )
 
+    def _create_options_entry(self, user_input):
+        """Save user_input on top of the existing options.
+
+        Each options page only edits some keys, so keep the others.
+        """
+        return self.async_create_entry(
+            title="", data={**self._config_entry.options, **user_input}
+        )
+
     async def async_step_timeout_settings(self, user_input=None):
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            return self._create_options_entry(user_input)
 
         current = self._config_entry.options
         data_schema = vol.Schema(
@@ -331,6 +346,31 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         )
 
         return self.async_show_form(step_id="timeout_settings", data_schema=data_schema)
+
+    async def async_step_debug_settings(self, user_input=None):
+        """Turn raw API traffic capture on or off."""
+        if user_input is not None:
+            return self._create_options_entry(user_input)
+
+        current = self._config_entry.options
+        data_schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_DEBUG_TRAFFIC_LOG,
+                    default=bool(current.get(CONF_DEBUG_TRAFFIC_LOG, False)),
+                ): bool,
+                vol.Required(
+                    CONF_DEBUG_REDACT_SECRETS,
+                    default=bool(current.get(CONF_DEBUG_REDACT_SECRETS, True)),
+                ): bool,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="debug_settings",
+            data_schema=data_schema,
+            description_placeholders={"log_path": debug_log_path(self.hass)},
+        )
 
     async def async_step_unit_select(self, user_input=None):
         """Handle options flow."""
