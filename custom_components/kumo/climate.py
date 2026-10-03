@@ -191,13 +191,11 @@ class KumoThermostat(CoordinatedKumoEntity, ClimateEntity):
         entity keeps its safe init defaults ([OFF, COOL], no fan/swing lists)
         until the first real poll arrives.
 
-        Once the profile is populated the upgrade-only strategy for hvac_modes
-        ensures modes are only ever added, never removed.  A transient poll
-        failure (which leaves pykumo's _profile unchanged) cannot strip a
-        capability that was already confirmed.  fan_modes and swing_modes are
-        updated from the live profile only when the returned list is non-empty;
-        a transient empty read therefore never clobbers a previously confirmed
-        list, consistent with the upgrade-only philosophy.
+        hvac_modes is the list of modes pykumo says the unit offers, so a mode
+        turned off in the app goes away here too. A failed poll leaves
+        pykumo's list as it was. fan_modes and swing_modes are updated from
+        the live profile only when the returned list is non-empty, so a
+        transient empty read never clobbers a previously confirmed list.
         """
         # Skip until the unit profile has been populated by a successful poll.
         # pykumo sets _profile = {} at init and populates it after the first
@@ -219,16 +217,14 @@ class KumoThermostat(CoordinatedKumoEntity, ClimateEntity):
         if vane_dirs:
             self._swing_modes = vane_dirs
 
-        # --- hvac_modes: upgrade-only merge ---
-        if self._pykumo.has_dry_mode() and HVACMode.DRY not in self._hvac_modes:
-            self._hvac_modes.append(HVACMode.DRY)
-        if self._pykumo.has_heat_mode() and HVACMode.HEAT not in self._hvac_modes:
-            self._hvac_modes.append(HVACMode.HEAT)
-        if self._pykumo.has_vent_mode() and HVACMode.FAN_ONLY not in self._hvac_modes:
-            self._hvac_modes.append(HVACMode.FAN_ONLY)
-        if self._pykumo.has_auto_mode() and HVACMode.HEAT_COOL not in self._hvac_modes:
-            self._hvac_modes.append(HVACMode.HEAT_COOL)
+        # --- hvac_modes: as pykumo reports them ---
+        modes = self._unit_modes()
+        if modes is not None:
+            self._hvac_modes = [KUMO_STATE_TO_HA[m] for m in modes]
+        if HVACMode.HEAT_COOL in self._hvac_modes:
             self._supported_features |= ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
+        else:
+            self._supported_features &= ~ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
 
         # --- swing support flag: upgrade-only ---
         if self._pykumo.has_vane_direction():
@@ -241,6 +237,22 @@ class KumoThermostat(CoordinatedKumoEntity, ClimateEntity):
             self._fan_modes,
             self._swing_modes,
         )
+
+    def _unit_modes(self):
+        """The unit's operating modes, in pykumo's names, or None if unknown."""
+        get_modes = getattr(self._pykumo, "get_supported_modes", None)
+        if get_modes is not None:
+            return get_modes()
+        # Older pykumo releases only have the has_*_mode() helpers, and
+        # report auto on units without heat, which auto can't run without.
+        heat = self._pykumo.has_heat_mode()
+        found = {
+            "dry": self._pykumo.has_dry_mode(),
+            "heat": heat,
+            "vent": self._pykumo.has_vent_mode(),
+            "auto": heat and self._pykumo.has_auto_mode(),
+        }
+        return ["off", "cool"] + [mode for mode, has in found.items() if has]
 
     @property
     def unique_id(self):
