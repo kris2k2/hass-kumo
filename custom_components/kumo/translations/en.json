@@ -38,7 +38,11 @@
           "connect_timeout": "Connection Timeout (seconds)",
           "response_timeout": "Response Timeout (seconds)",
           "scan_interval": "Poll Interval (seconds)",
-          "post_command_refresh_delay": "Post-Command Refresh Delay (seconds)"
+          "post_command_refresh_delay": "Post-Command Refresh Delay (seconds)",
+          "min_request_interval": "Minimum Gap Between Adapter Requests (seconds)"
+        },
+        "data_description": {
+          "min_request_interval": "Idle time each indoor unit's adapter gets between one request and the next, so polls and commands don't overwhelm it. Raise it if adapters drop off or time out; 0 turns throttling off."
         }
       },
       "debug_settings": {

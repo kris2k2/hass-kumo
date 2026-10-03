@@ -20,9 +20,11 @@ from .const import (
     CONF_CONNECT_TIMEOUT,
     CONF_DEBUG_REDACT_SECRETS,
     CONF_DEBUG_TRAFFIC_LOG,
+    CONF_MIN_REQUEST_INTERVAL,
     CONF_POST_COMMAND_REFRESH_DELAY,
     CONF_RESPONSE_TIMEOUT,
     CONF_SCAN_INTERVAL,
+    DEFAULT_MIN_REQUEST_INTERVAL,
     DEFAULT_POST_COMMAND_REFRESH_DELAY,
     DEFAULT_SCAN_INTERVAL,
     DHCP_DISCOVERED_KEY,
@@ -342,6 +344,14 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         )
                     ),
                 ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=30.0)),
+                vol.Required(
+                    CONF_MIN_REQUEST_INTERVAL,
+                    default=float(
+                        current.get(
+                            CONF_MIN_REQUEST_INTERVAL, DEFAULT_MIN_REQUEST_INTERVAL
+                        )
+                    ),
+                ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=5.0)),
             }
         )
 

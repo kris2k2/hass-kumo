@@ -1,9 +1,11 @@
 """Support for Mitsubishi KumoCloud devices."""
 
-import logging
-import json
 import binascii
+import inspect
+import json
+import logging
 from datetime import timedelta
+from functools import partial
 
 import homeassistant.helpers.config_validation as cv
 import pykumo
@@ -18,6 +20,7 @@ from .coordinator import KumoDataUpdateCoordinator
 from .debug_log import async_start_traffic_capture
 from .const import (
     CONF_CONNECT_TIMEOUT,
+    CONF_MIN_REQUEST_INTERVAL,
     CONF_PREFER_CACHE,
     CONF_RESPONSE_TIMEOUT,
     CONF_SCAN_INTERVAL,
@@ -133,8 +136,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
             entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         )
         update_interval = timedelta(seconds=scan_interval_secs)
+        make_kwargs = {}
+        if CONF_MIN_REQUEST_INTERVAL in entry.options:
+            if (
+                "min_request_interval"
+                in inspect.signature(account.make_pykumos).parameters
+            ):
+                make_kwargs["min_request_interval"] = float(
+                    entry.options[CONF_MIN_REQUEST_INTERVAL]
+                )
+            else:
+                _LOGGER.warning(
+                    "This pykumo version can't throttle adapter requests; "
+                    "ignoring the minimum request interval option"
+                )
         pykumos = await hass.async_add_executor_job(
-            account.make_pykumos, timeouts, True
+            partial(account.make_pykumos, timeouts, True, **make_kwargs)
         )
         for device in pykumos.values():
             if device.get_serial() not in coordinators:
