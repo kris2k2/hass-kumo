@@ -17,6 +17,14 @@ CONF_SCAN_INTERVAL = "scan_interval"
 DEFAULT_SCAN_INTERVAL = 60  # seconds
 CONF_POST_COMMAND_REFRESH_DELAY = "post_command_refresh_delay"
 DEFAULT_POST_COMMAND_REFRESH_DELAY = 2.0  # seconds
+# Minimum idle time between requests to one adapter; 0 turns throttling off.
+CONF_MIN_REQUEST_INTERVAL = "min_request_interval"
+try:
+    from pykumo.const import (
+        UNIT_MIN_REQUEST_INTERVAL_SECONDS as DEFAULT_MIN_REQUEST_INTERVAL,
+    )
+except ImportError:  # pykumo releases from before request throttling
+    DEFAULT_MIN_REQUEST_INTERVAL = 0.25  # seconds
 CONF_DEBUG_TRAFFIC_LOG = "debug_traffic_log"
 CONF_DEBUG_REDACT_SECRETS = "debug_redact_secrets"
 DEBUG_LOG_DIR = "kumo_debug"
