@@ -11,6 +11,7 @@ try:
 except ImportError:
     from homeassistant.components.dhcp import DhcpServiceInfo
 from homeassistant.core import callback
+import homeassistant.helpers.config_validation as cv
 from homeassistant.util.json import load_json
 from homeassistant.helpers.json import save_json
 from pykumo import KumoCloudAccount
@@ -24,6 +25,7 @@ from .const import (
     CONF_POST_COMMAND_REFRESH_DELAY,
     CONF_RESPONSE_TIMEOUT,
     CONF_SCAN_INTERVAL,
+    CONF_UNDECLARED_FAN_SPEEDS,
     DEFAULT_MIN_REQUEST_INTERVAL,
     DEFAULT_POST_COMMAND_REFRESH_DELAY,
     DEFAULT_SCAN_INTERVAL,
@@ -38,6 +40,7 @@ _LOGGER = logging.getLogger(__name__)
 EDIT_KEY = "edit_selection"
 EDIT_TIMEOUT = "Timeouts"
 EDIT_UNITS = "Unit Settings"
+EDIT_FAN_SPEEDS = "Fan Speeds"
 EDIT_DEBUG = "Debug Logging"
 
 
@@ -293,6 +296,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 return await self.async_step_timeout_settings()
             if user_input[EDIT_KEY] == EDIT_UNITS:
                 return await self.async_step_unit_select()
+            if user_input[EDIT_KEY] == EDIT_FAN_SPEEDS:
+                return await self.async_step_fan_speeds()
             if user_input[EDIT_KEY] == EDIT_DEBUG:
                 return await self.async_step_debug_settings()
 
@@ -301,7 +306,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             data_schema=vol.Schema(
                 {
                     vol.Required(EDIT_KEY, default=EDIT_TIMEOUT): vol.In(
-                        [EDIT_TIMEOUT, EDIT_UNITS, EDIT_DEBUG]
+                        [EDIT_TIMEOUT, EDIT_UNITS, EDIT_FAN_SPEEDS, EDIT_DEBUG]
                     )
                 },
             ),
@@ -381,6 +386,34 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             data_schema=data_schema,
             description_placeholders={"log_path": debug_log_path(self.hass)},
         )
+
+    async def async_step_fan_speeds(self, user_input=None):
+        """Pick the units that also offer fan speeds they don't declare."""
+        if user_input is not None:
+            return self._create_options_entry(user_input)
+
+        kumo_cache = await self.hass.async_add_executor_job(
+            load_json, self.hass.config.path(KUMO_CONFIG_CACHE)
+        )
+        units = {
+            serial: _get_unit_label(raw_unit, serial)
+            for serial, raw_unit in _iter_zone_units(kumo_cache)
+        }
+        # A unit no longer on the account can't be picked, so drop it.
+        chosen = [
+            serial
+            for serial in self._config_entry.options.get(CONF_UNDECLARED_FAN_SPEEDS, [])
+            if serial in units
+        ]
+        data_schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_UNDECLARED_FAN_SPEEDS, default=chosen
+                ): cv.multi_select(units),
+            }
+        )
+
+        return self.async_show_form(step_id="fan_speeds", data_schema=data_schema)
 
     async def async_step_unit_select(self, user_input=None):
         """Handle options flow."""
