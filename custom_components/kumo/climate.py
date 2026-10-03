@@ -69,6 +69,15 @@ HA_STATE_TO_KUMO = {
     HVACMode.FAN_ONLY: KUMO_STATE_VENT,
     HVACMode.OFF: KUMO_STATE_OFF,
 }
+# Order of the modes in hvac_modes.
+_HVAC_MODE_ORDER = (
+    HVACMode.OFF,
+    HVACMode.COOL,
+    HVACMode.DRY,
+    HVACMode.HEAT,
+    HVACMode.FAN_ONLY,
+    HVACMode.HEAT_COOL,
+)
 KUMO_STATE_TO_HA = {
     KUMO_STATE_AUTO: HVACMode.HEAT_COOL,
     KUMO_STATE_AUTO_COOL: HVACMode.HEAT_COOL,
@@ -220,14 +229,21 @@ class KumoThermostat(CoordinatedKumoEntity, ClimateEntity):
             self._swing_modes = vane_dirs
 
         # --- hvac_modes: upgrade-only merge ---
-        if self._pykumo.has_dry_mode() and HVACMode.DRY not in self._hvac_modes:
-            self._hvac_modes.append(HVACMode.DRY)
-        if self._pykumo.has_heat_mode() and HVACMode.HEAT not in self._hvac_modes:
-            self._hvac_modes.append(HVACMode.HEAT)
-        if self._pykumo.has_vent_mode() and HVACMode.FAN_ONLY not in self._hvac_modes:
-            self._hvac_modes.append(HVACMode.FAN_ONLY)
-        if self._pykumo.has_auto_mode() and HVACMode.HEAT_COOL not in self._hvac_modes:
-            self._hvac_modes.append(HVACMode.HEAT_COOL)
+        has_heat = self._pykumo.has_heat_mode()
+        found = {
+            HVACMode.DRY: self._pykumo.has_dry_mode(),
+            HVACMode.HEAT: has_heat,
+            HVACMode.FAN_ONLY: self._pykumo.has_vent_mode(),
+            # Auto switches between heating and cooling, so it needs heat
+            # mode. Older pykumo releases report auto on cooling-only units.
+            HVACMode.HEAT_COOL: has_heat and self._pykumo.has_auto_mode(),
+        }
+        confirmed = set(self._hvac_modes) | {m for m, has in found.items() if has}
+        # A new list in a fixed order, rather than appending to the current
+        # one: Home Assistant only notices the change if the list differs
+        # from the one it already has.
+        self._hvac_modes = [m for m in _HVAC_MODE_ORDER if m in confirmed]
+        if HVACMode.HEAT_COOL in confirmed:
             self._supported_features |= ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
 
         # --- swing support flag: upgrade-only ---
