@@ -6,7 +6,6 @@ import pytest
 import voluptuous as vol
 from homeassistant import data_entry_flow
 from homeassistant.core import HomeAssistant
-from pykumo import KumoCloudAccount
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.kumo.config_flow import EDIT_KEY, EDIT_TIMEOUT
@@ -71,10 +70,26 @@ async def test_interval_out_of_range_rejected(hass: HomeAssistant):
         )
 
 
-async def _setup_and_capture_make_pykumos(hass, options, spec=None):
-    """Set up the entry with make_pykumos replaced by a mock shaped like spec
-    (by default the real one, whose signature setup inspects)."""
-    make = create_autospec(spec or KumoCloudAccount.make_pykumos, return_value={})
+def _make_pykumos(
+    self,
+    timeouts=None,
+    init_update_status=True,
+    use_schedule=False,
+    min_request_interval=None,
+):
+    """Signature of pykumo releases that throttle adapter requests."""
+
+
+def _make_pykumos_before_throttling(
+    self, timeouts=None, init_update_status=True, use_schedule=False
+):
+    """Signature of pykumo releases from before request throttling (0.5.2)."""
+
+
+async def _setup_and_capture_make_pykumos(hass, options, spec=_make_pykumos):
+    """Set up the entry with make_pykumos replaced by a mock shaped like spec,
+    whichever pykumo is installed: setup inspects its signature."""
+    make = create_autospec(spec, return_value={})
     entry = MockConfigEntry(
         domain=DOMAIN, data={"username": "u", "password": "p"}, options=options
     )
@@ -102,11 +117,8 @@ async def test_setup_leaves_pykumo_default_when_unset(hass: HomeAssistant):
 
 
 async def test_setup_ignores_interval_with_older_pykumo(hass: HomeAssistant, caplog):
-    def make_pykumos(self, timeouts=None, init_update_status=True):
-        """Signature of pykumo releases from before request throttling."""
-
     call = await _setup_and_capture_make_pykumos(
-        hass, {CONF_MIN_REQUEST_INTERVAL: 0.75}, spec=make_pykumos
+        hass, {CONF_MIN_REQUEST_INTERVAL: 0.75}, spec=_make_pykumos_before_throttling
     )
     assert "min_request_interval" not in call.kwargs
     assert "can't throttle adapter requests" in caplog.text
