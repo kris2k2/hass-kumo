@@ -69,15 +69,6 @@ HA_STATE_TO_KUMO = {
     HVACMode.FAN_ONLY: KUMO_STATE_VENT,
     HVACMode.OFF: KUMO_STATE_OFF,
 }
-# Order of the modes in hvac_modes.
-_HVAC_MODE_ORDER = (
-    HVACMode.OFF,
-    HVACMode.COOL,
-    HVACMode.DRY,
-    HVACMode.HEAT,
-    HVACMode.FAN_ONLY,
-    HVACMode.HEAT_COOL,
-)
 KUMO_STATE_TO_HA = {
     KUMO_STATE_AUTO: HVACMode.HEAT_COOL,
     KUMO_STATE_AUTO_COOL: HVACMode.HEAT_COOL,
@@ -200,13 +191,11 @@ class KumoThermostat(CoordinatedKumoEntity, ClimateEntity):
         entity keeps its safe init defaults ([OFF, COOL], no fan/swing lists)
         until the first real poll arrives.
 
-        Once the profile is populated the upgrade-only strategy for hvac_modes
-        ensures modes are only ever added, never removed.  A transient poll
-        failure (which leaves pykumo's _profile unchanged) cannot strip a
-        capability that was already confirmed.  fan_modes and swing_modes are
-        updated from the live profile only when the returned list is non-empty;
-        a transient empty read therefore never clobbers a previously confirmed
-        list, consistent with the upgrade-only philosophy.
+        hvac_modes is the list of modes pykumo says the unit offers, so a mode
+        turned off in the app goes away here too. A failed poll leaves
+        pykumo's list as it was. fan_modes and swing_modes are updated from
+        the live profile only when the returned list is non-empty, so a
+        transient empty read never clobbers a previously confirmed list.
         """
         # Skip until the unit profile has been populated by a successful poll.
         # pykumo sets _profile = {} at init and populates it after the first
@@ -228,23 +217,14 @@ class KumoThermostat(CoordinatedKumoEntity, ClimateEntity):
         if vane_dirs:
             self._swing_modes = vane_dirs
 
-        # --- hvac_modes: upgrade-only merge ---
-        has_heat = self._pykumo.has_heat_mode()
-        found = {
-            HVACMode.DRY: self._pykumo.has_dry_mode(),
-            HVACMode.HEAT: has_heat,
-            HVACMode.FAN_ONLY: self._pykumo.has_vent_mode(),
-            # Auto switches between heating and cooling, so it needs heat
-            # mode. Older pykumo releases report auto on cooling-only units.
-            HVACMode.HEAT_COOL: has_heat and self._pykumo.has_auto_mode(),
-        }
-        confirmed = set(self._hvac_modes) | {m for m, has in found.items() if has}
-        # A new list in a fixed order, rather than appending to the current
-        # one: Home Assistant only notices the change if the list differs
-        # from the one it already has.
-        self._hvac_modes = [m for m in _HVAC_MODE_ORDER if m in confirmed]
-        if HVACMode.HEAT_COOL in confirmed:
+        # --- hvac_modes: as pykumo reports them ---
+        modes = self._unit_modes()
+        if modes is not None:
+            self._hvac_modes = [KUMO_STATE_TO_HA[m] for m in modes]
+        if HVACMode.HEAT_COOL in self._hvac_modes:
             self._supported_features |= ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
+        else:
+            self._supported_features &= ~ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
 
         # --- swing support flag: upgrade-only ---
         if self._pykumo.has_vane_direction():
@@ -257,6 +237,22 @@ class KumoThermostat(CoordinatedKumoEntity, ClimateEntity):
             self._fan_modes,
             self._swing_modes,
         )
+
+    def _unit_modes(self):
+        """The unit's operating modes, in pykumo's names, or None if unknown."""
+        get_modes = getattr(self._pykumo, "get_supported_modes", None)
+        if get_modes is not None:
+            return get_modes()
+        # Older pykumo releases only have the has_*_mode() helpers, and
+        # report auto on units without heat, which auto can't run without.
+        heat = self._pykumo.has_heat_mode()
+        found = {
+            "dry": self._pykumo.has_dry_mode(),
+            "heat": heat,
+            "vent": self._pykumo.has_vent_mode(),
+            "auto": heat and self._pykumo.has_auto_mode(),
+        }
+        return ["off", "cool"] + [mode for mode, has in found.items() if has]
 
     @property
     def unique_id(self):
