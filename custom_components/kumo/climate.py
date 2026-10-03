@@ -293,6 +293,31 @@ class KumoThermostat(CoordinatedKumoEntity, ClimateEntity):
             return 1.0
         return 0.5
 
+    def _setpoint_limits(self):
+        """(min, max) °C the unit accepts in its current mode, if known."""
+        # Older pykumo releases don't report setpoint limits.
+        get_limits = getattr(self._pykumo, "get_setpoint_limits", None)
+        return get_limits() if get_limits is not None else None
+
+    def _limit_in_display_unit(self, celsius):
+        return c_to_f(celsius) if self._use_fahrenheit else celsius
+
+    @property
+    def min_temp(self):
+        """Return the lowest setpoint the unit accepts in its current mode."""
+        limits = self._setpoint_limits()
+        if limits is None:
+            return super().min_temp
+        return self._limit_in_display_unit(limits[0])
+
+    @property
+    def max_temp(self):
+        """Return the highest setpoint the unit accepts in its current mode."""
+        limits = self._setpoint_limits()
+        if limits is None:
+            return super().max_temp
+        return self._limit_in_display_unit(limits[1])
+
     @property
     def current_humidity(self):
         """Return the current humidity, if known."""
