@@ -8,7 +8,12 @@ import voluptuous as vol
 from homeassistant.components.climate import PLATFORM_SCHEMA
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from .const import DOMAIN, KUMO_DATA, KUMO_DATA_COORDINATORS
+from .const import (
+    CONF_UNDECLARED_FAN_SPEEDS,
+    DOMAIN,
+    KUMO_DATA,
+    KUMO_DATA_COORDINATORS,
+)
 from .coordinator import KumoDataUpdateCoordinator
 from .entity import CoordinatedKumoEntity
 from .last_hvac_mode import get_last_hvac_mode, set_last_hvac_mode_value
@@ -210,7 +215,7 @@ class KumoThermostat(CoordinatedKumoEntity, ClimateEntity):
             return
 
         # --- fan / swing: overwrite from current (real) profile ---
-        fan_speeds = self._pykumo.get_fan_speeds()
+        fan_speeds = self._fan_speeds()
         if fan_speeds:
             self._fan_modes = fan_speeds
         vane_dirs = self._pykumo.get_vane_directions()
@@ -237,6 +242,18 @@ class KumoThermostat(CoordinatedKumoEntity, ClimateEntity):
             self._fan_modes,
             self._swing_modes,
         )
+
+    def _fan_speeds(self):
+        """The unit's fan speeds, plus undeclared ones if chosen in options."""
+        entry = self._coordinator.config_entry
+        chosen = entry.options.get(CONF_UNDECLARED_FAN_SPEEDS, []) if entry else []
+        if self._identifier not in chosen:
+            return self._pykumo.get_fan_speeds()
+        try:
+            return self._pykumo.get_fan_speeds(include_undeclared=True)
+        except TypeError:
+            # Older pykumo releases already offer every speed on 3-speed units.
+            return self._pykumo.get_fan_speeds()
 
     def _unit_modes(self):
         """The unit's operating modes, in pykumo's names, or None if unknown."""

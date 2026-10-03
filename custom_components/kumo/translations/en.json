@@ -45,6 +45,13 @@
           "min_request_interval": "Idle time each indoor unit's adapter gets between one request and the next, so polls and commands don't overwhelm it. Raise it if adapters drop off or time out; 0 turns throttling off."
         }
       },
+      "fan_speeds": {
+        "title": "Fan Speeds",
+        "description": "Each unit offers the fan speeds it declares. Some units accept speeds beyond those: units declaring 3 speeds (quiet, low, powerful) may also take superQuiet and superPowerful. Pick the units that should offer those too. On a unit that doesn't really have them, they may just behave like its nearest declared speed.",
+        "data": {
+          "undeclared_fan_speeds": "Also offer undeclared fan speeds on"
+        }
+      },
       "debug_settings": {
         "title": "Debug Logging",
         "description": "Record every request and response exchanged with your indoor units, the Kumo Cloud API and the Kumo Cloud websocket to `{log_path}` (one JSON object per line; rotates at 10 MB, keeping 5 old files). Use it to explore the API, then turn it off. Cloud and websocket traffic only happens while the integration starts up, and is skipped when 'Prefer Local Cache' was chosen during setup and the cache is usable.",

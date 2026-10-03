@@ -25,6 +25,8 @@ try:
     )
 except ImportError:  # pykumo releases from before request throttling
     DEFAULT_MIN_REQUEST_INTERVAL = 0.25  # seconds
+# Serials of units that also offer fan speeds their profile doesn't declare.
+CONF_UNDECLARED_FAN_SPEEDS = "undeclared_fan_speeds"
 CONF_DEBUG_TRAFFIC_LOG = "debug_traffic_log"
 CONF_DEBUG_REDACT_SECRETS = "debug_redact_secrets"
 DEBUG_LOG_DIR = "kumo_debug"
