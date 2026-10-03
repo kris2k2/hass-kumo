@@ -24,8 +24,10 @@ from homeassistant.const import (
     PRECISION_TENTHS,
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
+    EntityCategory,
+    UnitOfTime,
 )
-from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -90,6 +92,13 @@ async def async_setup_entry(
         _LOGGER.debug(
             "Adding entity: wifi_signal for %s", coordinator.get_device().get_name()
         )
+        # Needs a pykumo that records request latency.
+        if hasattr(coordinator.get_device(), "get_request_latency"):
+            entities.append(KumoAdapterLatency(coordinator))
+            _LOGGER.debug(
+                "Adding entity: adapter_latency for %s",
+                coordinator.get_device().get_name(),
+            )
 
     kumo_station_serials = await hass.async_add_executor_job(account.get_kumo_stations)
     for serial in kumo_station_serials:
@@ -386,3 +395,52 @@ class KumoWifiSignal(CoordinatedKumoEntity, SensorEntity):
     def entity_registry_enabled_default(self) -> bool:
         """Disable entity by default."""
         return False
+
+
+class KumoAdapterLatency(CoordinatedKumoEntity, SensorEntity):
+    """Round-trip time of requests to a unit's WiFi adapter.
+
+    The value is the average over the adapter's most recent requests (a
+    rolling window kept by pykumo, spanning the last few polls); the last,
+    fastest and slowest samples are exposed as attributes.
+    """
+
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_native_unit_of_measurement = UnitOfTime.MILLISECONDS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 0
+
+    def __init__(self, coordinator: KumoDataUpdateCoordinator):
+        """Initialize the latency sensor."""
+        super().__init__(coordinator)
+        self._name = self._pykumo.get_name() + " Adapter Latency"
+
+    @property
+    def unique_id(self):
+        """Return unique id"""
+        return f"{self._identifier}-adapter-latency"
+
+    @property
+    def native_value(self):
+        """Return the average request round-trip time in milliseconds."""
+        latency = self._pykumo.get_request_latency()
+        return latency["average"] if latency else None
+
+    @property
+    def extra_state_attributes(self):
+        """Return the last, min and max samples behind the average."""
+        latency = self._pykumo.get_request_latency()
+        if not latency:
+            return None
+        return {
+            "last_ms": latency["last"],
+            "min_ms": latency["min"],
+            "max_ms": latency["max"],
+            "samples": latency["samples"],
+        }
+
+    @property
+    def entity_registry_enabled_default(self) -> bool:
+        """Enable entity by default."""
+        return True

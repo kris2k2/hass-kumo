@@ -143,6 +143,8 @@ By default sensors for current temperature and last HVAC mode are enabled. It's 
 
 To enable these optional sensors, click on the Kumo tile in Settings -> Devices and Services, go into the Devices section, click on the indoor unit (or Kumo Station) and enable them under Sensors.
 
+Each unit also gets an **Adapter Latency** diagnostic sensor (enabled by default): the round-trip time, in milliseconds, of requests to the unit's WiFi adapter. Its value is the average over the adapter's last 10 answered requests (roughly the last few polls), with `last_ms`, `min_ms`, `max_ms` and `samples` attributes. Time spent queueing behind other requests or rate limiting isn't counted, and timeouts leave no sample, so a rising value means the adapter itself is slowing down. It needs a pykumo release that records request latency, and isn't created with older versions.
+
 ### Template Sensors
 
 For additional attributes not covered above, or if you require more customization, you can convert attributes to sensors using [templates](https://community.home-assistant.io/t/using-attributes-in-lovelace/72672). For example, here's a simple sensor for the target temperature.
